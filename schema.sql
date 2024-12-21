@@ -4,9 +4,10 @@ CREATE TABLE Users (
     Name VARCHAR(100) NOT NULL,
     Role VARCHAR(50) NOT NULL,
     Prefix VARCHAR(30) NOT NULL,
-    ParentID INT NULL,
+    ParentID INT ,
     Email VARCHAR(150) NOT NULL UNIQUE,
     Password VARCHAR(255) NOT NULL,
+    Priority INT NOT NULL,
     FOREIGN KEY (ParentID) REFERENCES Users(UserID) ON DELETE SET NULL
 );
 
@@ -32,3 +33,6 @@ CREATE TABLE Requests (
     FOREIGN KEY (SentBy) REFERENCES Users(UserID) ON DELETE CASCADE,
     FOREIGN KEY (SentTo) REFERENCES Users(UserID) ON DELETE CASCADE
 );
+
+INSERT INTO Users (Name, Role, Prefix, ParentID, Email, Password, Priority)
+VALUES ('Ali', 'Admin', 'IT', NULL, 'admin@it.com', 'pbkdf2:sha256:600000$o1inp7vOzppEoQqs$a894447ecbe355c71bf158a386551ed508d3ace66e74e177eed8e42b769ab250', 7);
