@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from db import connection, cursor
 
-requests_blueprint = Blueprint('requests', name)
+requests_blueprint = Blueprint('requests', __name__)
 
 @requests_blueprint.route("/create", methods=["POST"])
 def create_request():
@@ -105,7 +105,10 @@ def update_request(request_id):
         except Exception as e:
             return jsonify({"msg": "Error updating request", "error": str(e)}), 500
 
-    return jsonify({"msg": "Content type must be application/json"}), 415@requests_blueprint.route("/<int:request_id>", methods=["DELETE"])
+    return jsonify({"msg": "Content type must be application/json"}), 415
+
+
+@requests_blueprint.route("/<int:request_id>", methods=["DELETE"])
 def delete_request(request_id):
     try:
         cursor.execute("DELETE FROM Requests WHERE RequestID = %s", (request_id,))
