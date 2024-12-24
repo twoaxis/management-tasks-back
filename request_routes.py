@@ -1,9 +1,12 @@
 from flask import Blueprint, request, jsonify
 from db import connection, cursor
+from utils import jwt_required
 
-requests_blueprint = Blueprint('requests', __name__)
 
-@requests_blueprint.route("/create", methods=["POST"])
+request_blueprint = Blueprint('requests', __name__)
+
+@request_blueprint.route("/create", methods=["POST"])
+@jwt_required
 def create_request():
     if request.content_type == "application/json":
         data = request.json
@@ -46,7 +49,8 @@ def create_request():
     return jsonify({"msg": "Content type must be application/json"}), 415
 
 
-@requests_blueprint.route("/", methods=["GET"])
+@request_blueprint.route("/", methods=["GET"])
+@jwt_required
 def get_all_requests():
     try:
         cursor.execute("SELECT * FROM Requests")
@@ -58,7 +62,8 @@ def get_all_requests():
         return jsonify({"msg": "Error retrieving requests", "error": str(e)}), 500
 
 
-@requests_blueprint.route("/<int:request_id>", methods=["GET"])
+@request_blueprint.route("/<int:request_id>", methods=["GET"])
+@jwt_required
 def get_request_by_id(request_id):
     try:
         cursor.execute("SELECT * FROM Requests WHERE RequestID = %s", (request_id,))
@@ -73,7 +78,8 @@ def get_request_by_id(request_id):
         return jsonify({"msg": "Error retrieving request", "error": str(e)}), 500
 
 
-@requests_blueprint.route("/<int:request_id>", methods=["PUT"])
+@request_blueprint.route("/<int:request_id>", methods=["PUT"])
+@jwt_required
 def update_request(request_id):
     if request.content_type == "application/json":
         data = request.json
@@ -108,7 +114,8 @@ def update_request(request_id):
     return jsonify({"msg": "Content type must be application/json"}), 415
 
 
-@requests_blueprint.route("/<int:request_id>", methods=["DELETE"])
+@request_blueprint.route("/<int:request_id>", methods=["DELETE"])
+@jwt_required
 def delete_request(request_id):
     try:
         cursor.execute("DELETE FROM Requests WHERE RequestID = %s", (request_id,))
@@ -123,7 +130,8 @@ def delete_request(request_id):
         return jsonify({"msg": "Error deleting request", "error": str(e)}), 500
 
 
-@requests_blueprint.route("/assign", methods=["POST"])
+@request_blueprint.route("/assign", methods=["POST"])
+@jwt_required
 def assign_request():
     if request.content_type == "application/json":
         data = request.json
@@ -158,7 +166,8 @@ def assign_request():
     return jsonify({"msg": "Content type must be application/json"}), 415
 
 
-@requests_blueprint.route("/user/<int:user_id>", methods=["GET"])
+@request_blueprint.route("/user/<int:user_id>", methods=["GET"])
+@jwt_required
 def get_requests_by_user(user_id):
     try:
         cursor.execute(
