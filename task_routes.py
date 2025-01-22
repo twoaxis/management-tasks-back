@@ -1,9 +1,8 @@
 from flask import Blueprint, request, jsonify
 from utils import jwt_required
-from db import db
+from db import connection, cursor
 import jwt
 from config import Config
-
 
 task_blueprint = Blueprint('tasks', __name__)
 
@@ -24,60 +23,82 @@ def create_task():
             return jsonify({"msg": "Missing required fields"}), 400
 
         token = request.headers.get("Authorization")
-        username = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])['name']
+        if not token:
+            return jsonify({"msg": "Missing token"}), 401
 
-        query = "SELECT Priority FROM Users WHERE Name = %s"
-        result = db.execute(query, (username,))
-        user = result.fetchone()
+        decoded = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
+        username = decoded.get("name")
 
-        if not user or user['Priority'] != 7:
+        if not username:
+            return jsonify({"msg": "Invalid token"}), 401
+
+        cursor.execute("SELECT Priority FROM Users WHERE Name = %s", (username,))
+        user = cursor.fetchone()
+
+        if not user or user[0] != 7:
             return jsonify({"msg": "You are not authorized to create a task"}), 403
 
-        query = "INSERT INTO Tasks (TaskDescription, AssignedBy, AssignedTo, Deadline) VALUES (%s, %s, %s, %s)"
-        db.execute(query, (TaskDescription, AssignedBy, AssignedTo, Deadline))
-        db.commit()
+        cursor.execute(
+            "INSERT INTO Tasks (TaskDescription, AssignedBy, AssignedTo, Deadline) VALUES (%s, %s, %s, %s)",
+            (TaskDescription, AssignedBy, AssignedTo, Deadline)
+        )
+        connection.commit()
 
         return jsonify({"msg": "Task created successfully"}), 201
 
     except Exception as e:
-        db.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
-
+        return jsonify({"msg": "An error occurred while creating the task", "error": str(e)}), 500
 
 @task_blueprint.route('/', methods=['GET'])
 @jwt_required
 def get_all_tasks():
     try:
-        query = "SELECT * FROM Tasks"
-        tasks = db.execute(query).fetchall()
-        
-        return jsonify({"tasks": [dict(task) for task in tasks]}), 200
+        cursor.execute("SELECT * FROM Tasks")
+        tasks = cursor.fetchall()
+
+        # Convert tasks to a list of dictionaries
+        task_list = []
+        for task in tasks:
+            task_dict = {
+                "TaskID": task[0],
+                "TaskDescription": task[1],
+                "AssignedBy": task[2],
+                "AssignedTo": task[3],
+                "Status": task[4],
+                "CreationDate": task[5],
+                "Deadline": task[6]
+            }
+            task_list.append(task_dict)
+
+        return jsonify({"tasks": task_list}), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-
+        return jsonify({"msg": "Error retrieving tasks", "error": str(e)}), 500
 
 @task_blueprint.route('/<int:id>', methods=['GET'])
 @jwt_required
 def get_task_by_id(id):
     try:
-        query = "SELECT * FROM Tasks WHERE TaskID = %s"
-        task = db.execute(query, (id,)).fetchone()
+        cursor.execute("SELECT * FROM Tasks WHERE TaskID = %s", (id,))
+        task = cursor.fetchone()
 
         if not task:
             return jsonify({"msg": "Task not found"}), 404
 
-        return jsonify({"task": dict(task)}), 200
+        task_dict = {
+            "TaskID": task[0],
+            "TaskDescription": task[1],
+            "AssignedBy": task[2],
+            "AssignedTo": task[3],
+            "Status": task[4],
+            "CreationDate": task[5],
+            "Deadline": task[6]
+        }
+
+        return jsonify({"task": task_dict}), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-
+        return jsonify({"msg": "Error retrieving task", "error": str(e)}), 500
 
 @task_blueprint.route('/<int:id>', methods=['PUT'])
 @jwt_required
@@ -91,53 +112,44 @@ def update_task(id):
         Status = data.get('Status')
         Deadline = data.get('Deadline')
 
-        query = "SELECT * FROM Tasks WHERE TaskID = %s"
-        task = db.execute(query, (id,)).fetchone()
+        cursor.execute("SELECT * FROM Tasks WHERE TaskID = %s", (id,))
+        task = cursor.fetchone()
 
         if not task:
             return jsonify({"msg": "Task not found"}), 404
 
         query = """
             UPDATE Tasks SET
-                TaskDescription = COALESCE(%s, TaskDescription),
-                Status = COALESCE(%s, Status),
-                Deadline = COALESCE(%s, Deadline)
+                TaskDescription = %s,
+                Status = %s,
+                Deadline = %s
             WHERE TaskID = %s
         """
-        db.execute(query, (TaskDescription, Status, Deadline, id))
-        db.commit()
+        cursor.execute(query, (TaskDescription, Status, Deadline, id))
+        connection.commit()
 
         return jsonify({"msg": "Task updated successfully"}), 200
 
     except Exception as e:
-        db.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
-
+        return jsonify({"msg": "Error updating task", "error": str(e)}), 500
 
 @task_blueprint.route('/<int:id>', methods=['DELETE'])
 @jwt_required
 def delete_task(id):
     try:
-        query = "SELECT * FROM Tasks WHERE TaskID = %s"
-        task = db.execute(query, (id,)).fetchone()
+        cursor.execute("SELECT * FROM Tasks WHERE TaskID = %s", (id,))
+        task = cursor.fetchone()
 
         if not task:
             return jsonify({"msg": "Task not found"}), 404
 
-        query = "DELETE FROM Tasks WHERE TaskID = %s"
-        db.execute(query, (id,))
-        db.commit()
+        cursor.execute("DELETE FROM Tasks WHERE TaskID = %s", (id,))
+        connection.commit()
 
         return jsonify({"msg": "Task deleted successfully", "id": id}), 200
 
     except Exception as e:
-        db.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
-
+        return jsonify({"msg": "Error deleting task", "error": str(e)}), 500
 
 @task_blueprint.route('/assign', methods=['POST'])
 @jwt_required
@@ -153,33 +165,41 @@ def assign_task():
         if not all([TaskID, AssignedTo]):
             return jsonify({"msg": "Missing required fields"}), 400
 
-        query = "SELECT * FROM Tasks WHERE TaskID = %s"
-        task = db.execute(query, (TaskID,)).fetchone()
+        cursor.execute("SELECT * FROM Tasks WHERE TaskID = %s", (TaskID,))
+        task = cursor.fetchone()
 
         if not task:
             return jsonify({"msg": "Task not found"}), 404
 
-        query = "UPDATE Tasks SET AssignedTo = %s WHERE TaskID = %s"
-        db.execute(query, (AssignedTo, TaskID))
-        db.commit()
+        cursor.execute("UPDATE Tasks SET AssignedTo = %s WHERE TaskID = %s", (AssignedTo, TaskID))
+        connection.commit()
 
         return jsonify({"msg": "Task assigned successfully"}), 200
 
     except Exception as e:
-        db.rollback()
-        return jsonify({"error": str(e)}), 500
-
-
-
+        return jsonify({"msg": "Error assigning task", "error": str(e)}), 500
 
 @task_blueprint.route('/user/<int:id>', methods=['GET'])
 @jwt_required
 def get_tasks_by_user(id):
     try:
-        query = "SELECT * FROM Tasks WHERE AssignedTo = %s"
-        tasks = db.execute(query, (id,)).fetchall()
+        cursor.execute("SELECT * FROM Tasks WHERE AssignedTo = %s", (id,))
+        tasks = cursor.fetchall()
 
-        return jsonify({"tasks": [dict(task) for task in tasks]}), 200
+        task_list = []
+        for task in tasks:
+            task_dict = {
+                "TaskID": task[0],
+                "TaskDescription": task[1],
+                "AssignedBy": task[2],
+                "AssignedTo": task[3],
+                "Status": task[4],
+                "CreationDate": task[5],
+                "Deadline": task[6]
+            }
+            task_list.append(task_dict)
+
+        return jsonify({"tasks": task_list}), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"msg": "Error retrieving tasks", "error": str(e)}), 500
